@@ -1,0 +1,28 @@
+title: Malicious Document Download and Register Malicious File
+id: 92084f34-0683-11ed-b939-0242ac120002
+description: Detects a Malicious Word Document Spawning Rundll32.exe to Download and Register a Malicious .DLL
+status: experimental
+date: 2022/07/18
+modified: 2022/07/19
+author: Grant Knoetze 69013855+Grant-Knoetze@users.noreply.github.com
+tags:
+    - attack.initial_access_phishing_spearphishing_attachment
+    - attack.user_execution_malicious_file
+    - attack.t1566.001
+    - attack.t1204.002
+references:
+    - https://www.grantknoetze.com
+logsource:
+    product: windows
+    service: sysmon
+detection:
+    selection: 
+        EventID:
+        - 1
+        - 11
+        SourceImage|endswith: 'winword.exe'
+        TargetImage|endswith: 'rundll32.exe'             
+    condition: selection
+falsepositives:
+    - Unknown
+level: medium
