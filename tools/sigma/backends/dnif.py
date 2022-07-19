@@ -48,7 +48,7 @@ class DnifBackend(SingleTextQueryBackend):
         for generated_node in generated:
             if generated_node is not None:
                 if re.search(self.orToken, generated_node):
-                    transformed.append("(" + generated_node + ")")
+                    transformed.append(f"({generated_node})")
                 else:
                     transformed.append(generated_node)
         return self.andToken.join(transformed)
@@ -66,10 +66,7 @@ class DnifBackend(SingleTextQueryBackend):
             if "*" in val[1:-1]:  # value contains * inside string - use regex match
                 default_operator = ""
                 val = re.sub(r'(\\\\\*|\*)', '.*', val)
-                if "\\" in val:
-                    val = f'@rlike("%", "{val}")'
-                else:
-                    val = f'rlike("%", "{val}")'
+                val = f'@rlike("%", "{val}")' if "\\" in val else f'rlike("%", "{val}")'
                 return f'{default_operator} {self.cleanValue(val)}'
             elif val.startswith("*") or val.endswith("*"):
                 default_operator = "like"
@@ -79,8 +76,6 @@ class DnifBackend(SingleTextQueryBackend):
                     val = f'%{val[1:]}'
                 elif val.endswith("*"):
                     val = f'{val[:-1]}%'
-                if "\\" in val:
-                    return f'{default_operator} "{self.cleanValue(val)}"'
                 return f'{default_operator} "{self.cleanValue(val)}"'
             elif "\\" in val:
                 return f'{default_operator} @"{self.cleanValue(val)}"'
@@ -104,12 +99,11 @@ class DnifBackend(SingleTextQueryBackend):
                 generated_node = generated_node.split(' == ')
                 if len(generated_node) == 1:
                     transformed_query.append(generated_node[0])
+                elif generated_node[0] in transformed:
+                    if generated_node[1] not in transformed[generated_node[0]]:
+                        transformed[generated_node[0]].append(generated_node[1])
                 else:
-                    if generated_node[0] not in transformed:
-                        transformed[generated_node[0]] = [generated_node[1]]
-                    else:
-                        if generated_node[1] not in transformed[generated_node[0]]:
-                            transformed[generated_node[0]].append(generated_node[1])
+                    transformed[generated_node[0]] = [generated_node[1]]
         if transformed:
             _transformed_query = [f'{key} IN ({", ".join(value)})'
                                   for key, value in transformed.items()]
@@ -131,23 +125,28 @@ class DnifBackend(SingleTextQueryBackend):
 
         if agg.groupfield is None:
             if agg.aggfunc_notrans == 'count':
-                if agg.aggfield is None:
-                    if agg.condition:
-                        if self.timeframe:
-                            return f" | select count(*) as count_col" \
-                                   f" | having count_col {agg.cond_op} {agg.condition}" \
-                                   f" | duration {self.timeframe}"
-                        return f" | select count(*) as count_col" \
-                               f" | having count_col {agg.cond_op} {agg.condition}"
-                else:
-                    if self.timeframe:
-                        return f" | groupby {agg.groupfield}" \
-                               f" | select {agg.groupfield}, count(*) as count_col" \
-                               f" | having count_col {agg.cond_op} {agg.condition}" \
-                               f" | duration {self.timeframe}"
-                    return f" | groupby {agg.groupfield}" \
-                           f" | select {agg.groupfield}, count(*) as count_col" \
-                           f" | having count_col {agg.cond_op} {agg.condition}"
+                if agg.aggfield is not None:
+                    return (
+                        f" | groupby {agg.groupfield}"
+                        f" | select {agg.groupfield}, count(*) as count_col"
+                        f" | having count_col {agg.cond_op} {agg.condition}"
+                        f" | duration {self.timeframe}"
+                        if self.timeframe
+                        else f" | groupby {agg.groupfield}"
+                        f" | select {agg.groupfield}, count(*) as count_col"
+                        f" | having count_col {agg.cond_op} {agg.condition}"
+                    )
+
+                if agg.condition:
+                    return (
+                        f" | select count(*) as count_col"
+                        f" | having count_col {agg.cond_op} {agg.condition}"
+                        f" | duration {self.timeframe}"
+                        if self.timeframe
+                        else f" | select count(*) as count_col"
+                        f" | having count_col {agg.cond_op} {agg.condition}"
+                    )
+
             if self.timeframe:
                 return f' | groupby {agg.aggfield or ""}' \
                        f' | select {agg.aggfield or ""}, distinct_count({agg.aggfield or ""}), count(*) as total_count' \
@@ -160,63 +159,83 @@ class DnifBackend(SingleTextQueryBackend):
                                         agg.aggfield or "")
 
         if agg.aggfunc_notrans == 'count':
-            if agg.aggfield is None:
-                if agg.condition:
-                    if self.timeframe:
-                        return " | groupby %s" \
-                               " | select %s, count(*) as count_col" \
-                               " | having count_col %s %s" \
-                               " | duration %s" % (agg.groupfield,
-                                                   agg.groupfield,
-                                                   agg.cond_op,
-                                                   agg.condition,
-                                                   self.timeframe)
-                    return " | groupby %s" \
-                           " | select %s, count(*) as count_col" \
-                           " | having count_col %s %s" % (agg.groupfield,
-                                                          agg.groupfield,
-                                                          agg.cond_op,
-                                                          agg.condition)
-            if self.timeframe:
-                return " | groupby %s" \
-                       " | select %s, count(%s)" \
-                       " | duration %s" % (agg.groupfield or "",
-                                           agg.groupfield or "",
-                                           agg.aggfield or "",
-                                           self.timeframe)
-            return " | groupby %s" \
-                   " | select %s, count(%s)" % (agg.groupfield or "",
-                                                agg.groupfield or "",
-                                                agg.aggfield or "")
+            if agg.aggfield is None and agg.condition:
+                return (
+                    " | groupby %s"
+                    " | select %s, count(*) as count_col"
+                    " | having count_col %s %s"
+                    " | duration %s"
+                    % (
+                        agg.groupfield,
+                        agg.groupfield,
+                        agg.cond_op,
+                        agg.condition,
+                        self.timeframe,
+                    )
+                    if self.timeframe
+                    else " | groupby %s"
+                    " | select %s, count(*) as count_col"
+                    " | having count_col %s %s"
+                    % (agg.groupfield, agg.groupfield, agg.cond_op, agg.condition)
+                )
+
+            else:
+                return (
+                    " | groupby %s"
+                    " | select %s, count(%s)"
+                    " | duration %s"
+                    % (
+                        agg.groupfield or "",
+                        agg.groupfield or "",
+                        agg.aggfield or "",
+                        self.timeframe,
+                    )
+                    if self.timeframe
+                    else " | groupby %s"
+                    " | select %s, count(%s)"
+                    % (
+                        agg.groupfield or "",
+                        agg.groupfield or "",
+                        agg.aggfield or "",
+                    )
+                )
+
         elif agg.aggfunc_notrans == 'sum':
             if agg.aggfield is None:
-                if self.timeframe:
-                    return " | groupby %s" \
-                           " | select %s, sum(*) as count_col" \
-                           " | having count_col %s %s" \
-                           " | duration %s" % (agg.groupfield,
-                                               agg.groupfield,
-                                               agg.cond_op,
-                                               agg.condition,
-                                               self.timeframe)
-                return " | groupby %s" \
-                       " | select %s, sum(*) as count_col" \
-                       " | having count_col %s %s" % (agg.groupfield,
-                                                      agg.groupfield,
-                                                      agg.cond_op,
-                                                      agg.condition)
-            else:
-                if self.timeframe:
-                    return " | groupby %s" \
-                           " | select %s, sum(%s)" \
-                           " | duration %s" % (agg.groupfield or "",
-                                               agg.groupfield or "",
-                                               agg.aggfield or "",
-                                               self.timeframe)
-                return " | groupby %s" \
-                       " | select %s, sum(%s)" % (agg.groupfield or "",
-                                                  agg.groupfield or "",
-                                                  agg.aggfield or "")
+                return (
+                    " | groupby %s"
+                    " | select %s, sum(*) as count_col"
+                    " | having count_col %s %s"
+                    " | duration %s"
+                    % (
+                        agg.groupfield,
+                        agg.groupfield,
+                        agg.cond_op,
+                        agg.condition,
+                        self.timeframe,
+                    )
+                    if self.timeframe
+                    else " | groupby %s"
+                    " | select %s, sum(*) as count_col"
+                    " | having count_col %s %s"
+                    % (agg.groupfield, agg.groupfield, agg.cond_op, agg.condition)
+                )
+
+            return (
+                " | groupby %s"
+                " | select %s, sum(%s)"
+                " | duration %s"
+                % (
+                    agg.groupfield or "",
+                    agg.groupfield or "",
+                    agg.aggfield or "",
+                    self.timeframe,
+                )
+                if self.timeframe
+                else " | groupby %s"
+                " | select %s, sum(%s)"
+                % (agg.groupfield or "", agg.groupfield or "", agg.aggfield or "")
+            )
 
     def generateMapItemNode(self, node):
         key, value = node
@@ -226,7 +245,7 @@ class DnifBackend(SingleTextQueryBackend):
             return self.generateORNode(
                     [(key, v) for v in value]
                     )
-        elif type(value) in (str, int) or isinstance(value, SigmaRegularExpressionModifier):    # default value processing'
+        elif type(value) in (str, int) or isinstance(value, SigmaRegularExpressionModifier):# default value processing'
             value_mapping = self.default_value_mapping
             mapping = (key, value_mapping)
             if len(mapping) == 1:
@@ -235,12 +254,13 @@ class DnifBackend(SingleTextQueryBackend):
                     return mapping
                 elif callable(mapping):
                     return self.generateSubexpressionNode(
-                            self.generateANDNode(
-                                [cond for cond in mapping(key, self.cleanValue(value))]
-                                )
-                            )
+                        self.generateANDNode(
+                            list(mapping(key, self.cleanValue(value)))
+                        )
+                    )
+
             elif len(mapping) == 2:
-                result = list()
+                result = []
                 # iterate mapping and mapping source value synchronously over key and value
                 for mapitem, val in zip(mapping, node):
                     if type(mapitem) == str:
@@ -255,29 +275,29 @@ class DnifBackend(SingleTextQueryBackend):
                         result[0] = ''
                 return "{} {}".format(*result)
             else:
-                raise TypeError("Backend does not support map values of type " + str(type(value)))
+                raise TypeError(
+                    f"Backend does not support map values of type {str(type(value))}"
+                )
+
         else:
             return super().generateMapItemNode(node)
 
     def generateNOTNode(self, node):
         generated = self.generateNode(node.item)
-        if generated is not None:
-            return "%s %s" % (self.notToken, generated)
-        else:
-            return None
+        return f"{self.notToken} {generated}" if generated is not None else None
 
     def generateMapItemListNode(self, key, value):
         if isinstance(value, SigmaRegularExpressionModifier):
             key_mapped = self.fieldNameMapping(key, value)
             return {'regexp': {key_mapped: str(value)}}
-        if not set([type(val) for val in value]).issubset({str, int}):
+        if not {type(val) for val in value}.issubset({str, int}):
             raise TypeError("List values must be strings or numbers")
         if isinstance(value, list):
             if 'or' in value:
                 self.generateORNode(value)
             elif 'and' in value:
                 self.generateANDNode(value)
-        return ' or '.join(['%s=%s' % (key, self.generateValueNode(item)) for item in value])
+        return ' or '.join([f'{key}={self.generateValueNode(item)}' for item in value])
 
     def generateTypedValueNode(self, node):
         raise NotImplementedError("Node type not implemented for this backend")
@@ -289,7 +309,7 @@ class DnifBackend(SingleTextQueryBackend):
         raise NotImplementedError("Node type not implemented for this backend")
 
     def generateBefore(self, parsed):
-        return "stream=%s where " % self.table
+        return f"stream={self.table} where "
 
     def getTable(self, parsed_rule_data):
         logsource_data = parsed_rule_data.get('logsource')

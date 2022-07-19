@@ -67,23 +67,19 @@ if __name__ == "__main__":
                         query = backend.generate(parser)
                     except NotImplementedError as err:
                         if verbose_report:
-                            print("[SKIPPED] {}: {}".format(rule_path, err))
-                            results['skipped'] += "[SKIPPED] {}: {}\n".format(
-                                rule_path, err
-                            )
+                            print(f"[SKIPPED] {rule_path}: {err}")
+                            results['skipped'] += f"[SKIPPED] {rule_path}: {err}\n"
                         skipped += 1
                     except BaseException as err:
                         if verbose_report:
-                            print("[FAILED] {}: {}".format(rule_path, err))
-                            results['failed'] += "[FAILED] {}: {}\n".format(
-                                rule_path, err
-                            )
+                            print(f"[FAILED] {rule_path}: {err}")
+                            results['failed'] += f"[FAILED] {rule_path}: {err}\n"
                         errors += 1
                     else:
-                        queries += '\n# {}\n{}\n'.format(rule_path, query)
+                        queries += f'\n# {rule_path}\n{query}\n'
                         if verbose_report:
-                            print("[OK] {}".format(rule_path))
-                            results['success'] += "[OK] {}\n".format(rule_path)
+                            print(f"[OK] {rule_path}")
+                            results['success'] += f"[OK] {rule_path}\n"
                         successes += 1
 
     print("\n==========Statistics==========\n")

@@ -73,14 +73,14 @@ class TestFullTextSearch(unittest.TestCase):
                      "condition": "selection | count() > 5"}
         inner_query = 'SELECT *,count(*) AS agg FROM {0} WHERE {0} MATCH (\'"test"\')'.format(
             self.table)
-        expected_result = 'SELECT * FROM ({}) WHERE agg > 5'.format(inner_query)
+        expected_result = f'SELECT * FROM ({inner_query}) WHERE agg > 5'
         self.validate(detection, expected_result)
 
         detection = {"selection": ["test1", "test2"],
                      "condition": "selection | count() > 5"}
         inner_query = 'SELECT *,count(*) AS agg FROM {0} WHERE ({0} MATCH (\'"test1" OR "test2"\'))'.format(
             self.table)
-        expected_result = 'SELECT * FROM ({}) WHERE agg > 5'.format(inner_query)
+        expected_result = f'SELECT * FROM ({inner_query}) WHERE agg > 5'
         self.validate(detection, expected_result)
 
         # aggregation + group by + fts
@@ -88,7 +88,7 @@ class TestFullTextSearch(unittest.TestCase):
                      "condition": "selection | count() by fieldname > 5"}
         inner_query = 'SELECT *,count(*) AS agg FROM {0} WHERE ({0} MATCH (\'"test1" OR "test2"\')) GROUP BY fieldname'.format(
             self.table)
-        expected_result = 'SELECT * FROM ({}) WHERE agg > 5'.format(inner_query)
+        expected_result = f'SELECT * FROM ({inner_query}) WHERE agg > 5'
         self.validate(detection, expected_result)
 
     def test_not_implemented(self):
