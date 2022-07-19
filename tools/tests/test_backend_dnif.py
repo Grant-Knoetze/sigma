@@ -27,11 +27,7 @@ if __name__ == "__main__":
     success_report = args.success
     skipped_report = args.skipped
     failed_report = args.failed
-    display_results = False
-
-    if success_report or skipped_report or failed_report:
-        display_results = True
-
+    display_results = bool(success_report or skipped_report or failed_report)
     skipped = 0
     errors = 0
     successes = 0
@@ -43,7 +39,7 @@ if __name__ == "__main__":
     results = {'skipped': '', 'failed': '', 'success': ''}
     queries = ''
 
-    for (dirpath, _, filenames) in os.walk("../rules"):
+    for dirpath, _, filenames in os.walk("../rules"):
         for filename in filenames:
             if filename.endswith(".yaml") or filename.endswith(".yml"):
                 rule_path = os.path.join(dirpath, filename)
@@ -55,18 +51,14 @@ if __name__ == "__main__":
                     try:
                         query = backend.generate(parser)
                     except NotImplementedError as err:
-                        results['skipped'] += "[SKIPPED] {}: {}\n".format(
-                            rule_path, err
-                        )
+                        results['skipped'] += f"[SKIPPED] {rule_path}: {err}\n"
                         skipped += 1
                     except BaseException as err:
-                        results['failed'] += "[FAILED] {}: {}\n".format(
-                            rule_path, err
-                        )
+                        results['failed'] += f"[FAILED] {rule_path}: {err}\n"
                         errors += 1
                     else:
-                        queries += '\n# {}\n{}\n'.format(rule_path, query)
-                        results['success'] += "[OK] {}\n".format(rule_path)
+                        queries += f'\n# {rule_path}\n{query}\n'
+                        results['success'] += f"[OK] {rule_path}\n"
                         successes += 1
 
     print("\n==========Statistics==========\n")
@@ -83,14 +75,14 @@ if __name__ == "__main__":
             if results['success']:
                 print(f"SUCCESS RULES:\n{results['success']}")
             else:
-                print(f"SUCCESS RULES: No Results to Display")
+                print("SUCCESS RULES: No Results to Display")
         elif skipped_report:
             if results['skipped']:
                 print(f"SKIPPED RULES:\n{results['skipped']}")
             else:
-                print(f"SKIPPED RULES: No Results to Display")
+                print("SKIPPED RULES: No Results to Display")
         elif failed_report:
             if results['failed']:
                 print(f"FAILED RULES:\n{results['failed']}")
             else:
-                print(f"FAILED RULES: No Results to Display")
+                print("FAILED RULES: No Results to Display")
